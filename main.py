@@ -50,9 +50,9 @@ def tournament_selection(population, fitness, tournament_size):
 
 def print_summary(runs, fitness_obj1, fitness_obj2):
     # First column
-    runs_column = []
-    for i in range(runs):
-        runs_column.append(f'Run {i+1}')
+    #runs_column = []
+    #for i in range(runs):
+    #    runs_column.append(f'Run {i+1}')
     
     # Mean and standard deviation
     mean_obj1 = np.mean(fitness_obj1)
@@ -61,14 +61,15 @@ def print_summary(runs, fitness_obj1, fitness_obj2):
     std_obj2 = np.std(fitness_obj2)
 
     # Create a dictionary with the two lists as values
-    data = {'': runs_column, 'Fitness Obj 1': fitness_obj1, 'Fitness Obj 2': fitness_obj2}
+    #data = {'Fun': '', 'Fitness Obj 1': '', 'Fitness Obj 2': ''}
+    data = {'': ['Mean'], 'Fitness Obj 1': [mean_obj1], 'Fitness Obj 2': [mean_obj2]}
 
     # Create a pandas DataFrame from the dictionary
     data_table = pd.DataFrame(data)
 
     # Create a new DataFrame with the mean and concatenate it with (data_table)
-    mean_row = pd.DataFrame({'': ['Mean'], 'Fitness Obj 1': [mean_obj1], 'Fitness Obj 2': [mean_obj2]})
-    data_table = pd.concat([data_table, mean_row], ignore_index=True)
+    #mean_row = pd.DataFrame({'': ['Mean'], 'Fitness Obj 1': [mean_obj1], 'Fitness Obj 2': [mean_obj2]})
+    #data_table = pd.concat([data_table, mean_row], ignore_index=True)
 
     # Create a new DataFrame with the stander deviation and concatenate it with (data_table)
     std_row = pd.DataFrame({'': ['STD'], 'Fitness Obj 1': [std_obj1], 'Fitness Obj 2': [std_obj2]})
@@ -133,38 +134,6 @@ def EP(parameters):
         # Select mu best individuals
         EP_population = sorted(EP_population, key=lambda x: x.fitness)[:mu]
 
-    return best_individual, best_fitness
-
-    # Evolution loop
-    for generation in range(generations):
-        # Create offspring
-        offspring = np.zeros((lambda_, dim))
-        offspring_fitness = np.zeros(lambda_)
-
-        for i in range(lambda_):
-            # Select parents
-            parent, paretn_idx = tournament_selection(population, fitness, 2)
-
-            # Mutation
-            offspring[i] = parent + np.random.normal(0, 1, dim)
-
-            # Evaluate offspring
-            offspring_fitness[i] = objective_fun1(offspring[i]) if obj_no == 1 else objective_fun2(offspring[i])
-
-            # TRACK BEST SOLUTION: Update best individual and best fitness
-            if not best_fitness or offspring_fitness[i] < best_fitness:
-                best_individual = offspring[i]
-                best_fitness = offspring_fitness[i]
-
-        # Combine population and offspring
-        population = np.vstack((population, offspring))
-        fitness = np.concatenate((fitness, offspring_fitness))
-
-        # Select mu best individuals
-        best_indices = np.argsort(fitness)[:mu]
-        population = population[best_indices]
-        fitness = fitness[best_indices]
-    
     return best_individual, best_fitness
 
 def ES(parameters):
@@ -251,8 +220,11 @@ def main():
     seeds = [i+2 for i in range(times)]
 
     # Iterate over objective functions, once for each objective function
-    fitness_obj1 = [] # Store the fitness values for objective function 1
-    fitness_obj2 = [] # Store the fitness values for objective function 2
+    fitness_obj1_d20 = np.zeros((times,2)) # Store the fitness values for objective function 1
+    fitness_obj1_d50 = np.zeros((times,2))
+    fitness_obj2_d20 = np.zeros((times,2)) # Store the fitness values for objective function 2
+    fitness_obj2_d50 = np.zeros((times,2))
+
     for i in range(2):
         print()
 
@@ -265,6 +237,18 @@ def main():
             for dim in dimention_li:
                 EP_parameters = [generations, dim, bounds, mu, lambda_, seeds[run], i+1]  # (i) objective function number, 1 = objective_fun1, 2 = objective_fun2
                 EP_best_individual, EP_best_fitness = EP(EP_parameters)
+                
+                if i == 0:
+                    if(dim == 20):
+                        fitness_obj1_d20[run][0] = EP_best_fitness
+                    else:
+                        fitness_obj1_d50[run][0] = EP_best_fitness
+                else:
+                    if(dim == 20):
+                        fitness_obj2_d20[run][0] = EP_best_fitness
+                    else:
+                        fitness_obj2_d50[run][0] = EP_best_fitness
+
                 print(f"EP:  Objective function {i+1}, Dimension {dim}, Run {run+1}/{times}: Best fitness: {EP_best_fitness}")
                 print()
                 
@@ -275,22 +259,42 @@ def main():
             for dim in dimention_li:
                 ES_parameters = [generations, dim, bounds, mu, lambda_, seeds[run], i+1] # (i) objective function number, 1 = objective_fun1, 2 = objective_fun2
                 ES_best_individual, ES_best_fitness = ES(ES_parameters)
+
+                if i == 0:
+                    if(dim == 20):
+                        fitness_obj1_d20[run][1] = ES_best_fitness
+                    else:
+                        fitness_obj1_d50[run][1] = ES_best_fitness
+                else:
+                    if(dim == 20):
+                        fitness_obj2_d20[run][1] = ES_best_fitness
+                    else:
+                        fitness_obj2_d50[run][1] = ES_best_fitness
+
                 print(f"ES:  Objective function {i+1}, Dimension {dim}, Run {run+1}/{times}: Best fitness: {ES_best_fitness}")
                 print()
             
             # Store be results in a list
-            if i == 0:
-                fitness_obj1.append([round(EP_best_fitness), round(ES_best_fitness)])
-            else:
-                fitness_obj2.append([round(EP_best_fitness,5), round(ES_best_fitness,5)])
+            #if i == 0:
+            #    fitness_obj1.append([round(EP_best_fitness), round(ES_best_fitness)])
+            #else:
+            #    fitness_obj2.append([round(EP_best_fitness,5), round(ES_best_fitness,5)])
     
     # Print the summary
-    EP_data_table = print_summary(times, [item[0] for item in fitness_obj1], [item[0] for item in fitness_obj2])
-    ES_data_table = print_summary(times, [item[1] for item in fitness_obj1], [item[1] for item in fitness_obj2])
-    print("\nEP Results:")
-    print(EP_data_table)
-    print("\nES Results:")
-    print(ES_data_table)
+    EP_d20_table = print_summary(times, [item[0] for item in fitness_obj1_d20], [item[0] for item in fitness_obj2_d20])
+    EP_d50_table = print_summary(times, [item[0] for item in fitness_obj1_d50], [item[0] for item in fitness_obj2_d50])
+    ES_d20_table = print_summary(times, [item[1] for item in fitness_obj1_d20], [item[1] for item in fitness_obj2_d20])
+    ES_d50_table = print_summary(times, [item[1] for item in fitness_obj1_d50], [item[1] for item in fitness_obj2_d50])
+    
+    print("\nEP Dim(20) Results:")
+    print(EP_d20_table)
+    print("\nEP Dim(50) Results:")
+    print(EP_d50_table)
+    print("\nES Dim(20) Results:")
+    print(ES_d20_table)
+    print("\nES Dim(50) Results:")
+    print(ES_d50_table)
+    #print(ES_data_table)
 
                 
 
