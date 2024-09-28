@@ -1,6 +1,7 @@
 import random
 import numpy as np
 import pandas as pd
+from scipy.stats import cauchy
 
 class EP_Individual:
     def __init__(self, dimensions, bounds):
@@ -20,6 +21,16 @@ def objective_fun2(x):
         prod *= np.cos(x[i]/np.sqrt(i+1))
     return sum - prod + 1
 
+def cauchy_mutate(individual, scale_factor):
+    tau = 1 / np.sqrt(2 * len(individual.position))
+    tau_prime = 1 / np.sqrt(2 * np.sqrt(len(individual.position)))
+    
+    individual.strategy *= np.exp(tau_prime * np.random.normal(0, 1) + tau * np.random.normal(0, 1, len(individual.strategy)))
+    individual.strategy = np.maximum(individual.strategy, 1e-8)
+    
+    individual.position += individual.strategy * cauchy.rvs(loc=0, scale=scale_factor, size=len(individual.position))
+    return individual
+
 def tournament_selection(population, fitness, tournament_size):
     """
     Perform tournament selection to choose a parent from the population.
@@ -37,9 +48,39 @@ def tournament_selection(population, fitness, tournament_size):
     best_index = selected_indices[np.argmin(selected_fitness)]
     return population[best_index], best_index
 
+def print_summary(runs, fitness_obj1, fitness_obj2):
+    # First column
+    runs_column = []
+    for i in range(runs):
+        runs_column.append(f'Run {i+1}')
+    
+    # Mean and standard deviation
+    mean_obj1 = np.mean(fitness_obj1)
+    std_obj1 = np.std(fitness_obj1)
+    mean_obj2 = np.mean(fitness_obj2)
+    std_obj2 = np.std(fitness_obj2)
+
+    # Create a dictionary with the two lists as values
+    data = {'': runs_column, 'Fitness Obj 1': fitness_obj1, 'Fitness Obj 2': fitness_obj2}
+
+    # Create a pandas DataFrame from the dictionary
+    data_table = pd.DataFrame(data)
+
+    # Create a new DataFrame with the mean and concatenate it with (data_table)
+    mean_row = pd.DataFrame({'': ['Mean'], 'Fitness Obj 1': [mean_obj1], 'Fitness Obj 2': [mean_obj2]})
+    data_table = pd.concat([data_table, mean_row], ignore_index=True)
+
+    # Create a new DataFrame with the stander deviation and concatenate it with (data_table)
+    std_row = pd.DataFrame({'': ['STD'], 'Fitness Obj 1': [std_obj1], 'Fitness Obj 2': [std_obj2]})
+    data_table = pd.concat([data_table, std_row], ignore_index=True)
+
+    return data_table
+
+
 def EP(parameters):
     # Unpack parameters
     generations, dim, bounds, mu, lambda_, seed, obj_no = parameters
+    scale_factor = 3.0  # Cauchy mutation scale factor
 
     # Set random seed
     random.seed(seed)
@@ -47,33 +88,52 @@ def EP(parameters):
     # INITIALIZATION: Initialize population
     EP_population = [EP_Individual(dim, bounds) for _ in range(mu)]
     #variance = np.random.uniform(low=0, high=1, size=(mu, dim))
+    best_individual = None
+    best_fitness = None
 
-    # EVALUATION: Evaluate population fitness
-    for individual in range(EP_population):
-        individual.fitness = objective_fun1(individual.position) if obj_no == 1 else objective_fun2(individual.position)
-        #fitness[i] = objective_fun1(population[i]) if obj_no == 1 else objective_fun2(population[i])
-    
-    # Create offspring through mutation
-    offspring = []
-    for parent in population:
-        # Cauchy mutation
-        child = EP_Individual(dim, bounds)
-        child.position = parent.position.copy()
-        child.strategy = parent.strategy.copy()
-        #cauchy_mutate(cauchy_child, scale_factor)
-        child.fitness = objective_fun1(child.position) if obj_no == 1 else objective_fun2(child.position)
-        offspring.append(child)
+    # Evolution loop
+    for generation in range(generations):
+        if generation % 10 == generation: scale_factor = scale_factor / 2
+        # Create offspring
+        offspring = np.zeros((lambda_, dim))
+        offspring_fitness = np.zeros(lambda_)
 
-        # Gaussian mutation
-        #gaussian_child = EP_Individual(dim, bounds)
-        #gaussian_child.position = parent.position.copy()
-        #gaussian_child.strategy = parent.strategy.copy()
-        #gaussian_mutate(gaussian_child)
-        #gaussian_child.fitness = fitness_function(gaussian_child.position)
-        #offspring.append(gaussian_child)
+        # EVALUATION: Evaluate population fitness
+        for idx in range(len(EP_population)):
+            EP_population[idx].fitness = objective_fun1(EP_population[idx].position) if obj_no == 1 else objective_fun2(EP_population[idx].position)
+            #fitness[i] = objective_fun1(population[i]) if obj_no == 1 else objective_fun2(population[i])
+        
+        # Create offspring through mutation
+        offspring = []
+        for i in range(lambda_):
+            # Extract positions and fitnesses from EP_population
+            positions = [individual.position for individual in EP_population]
+            fitnesses = [individual.fitness for individual in EP_population]
+            # Select parents
+            selected_parent, paretn_idx = tournament_selection(positions, fitnesses, 2)
 
-    best_individual = []
-    best_fitness = []
+            # Cauchy mutation
+            child = EP_Individual(dim, bounds)
+            child.position = EP_population[paretn_idx].position.copy()
+            child.strategy = EP_population[paretn_idx].strategy.copy()
+            child = cauchy_mutate(child, scale_factor)
+            child.fitness = objective_fun1(child.position) if obj_no == 1 else objective_fun2(child.position)
+            offspring.append(child)
+        
+            # TRACK BEST SOLUTION: Update best individual and best fitness
+            if not best_fitness or child.fitness < best_fitness:
+                best_individual = child.position
+                best_fitness = child.fitness
+
+        # Combine population and offspring, and evaluate fitness
+        EP_population += offspring
+        for idx in range(len(EP_population)):
+            EP_population[idx].fitness = objective_fun1(EP_population[idx].position) if obj_no == 1 else objective_fun2(EP_population[idx].position)
+
+        # Select mu best individuals
+        EP_population = sorted(EP_population, key=lambda x: x.fitness)[:mu]
+
+    return best_individual, best_fitness
 
     # Evolution loop
     for generation in range(generations):
@@ -83,7 +143,7 @@ def EP(parameters):
 
         for i in range(lambda_):
             # Select parents
-            parent, _ = tournament_selection(population, fitness, 2)
+            parent, paretn_idx = tournament_selection(population, fitness, 2)
 
             # Mutation
             offspring[i] = parent + np.random.normal(0, 1, dim)
@@ -91,7 +151,7 @@ def EP(parameters):
             # Evaluate offspring
             offspring_fitness[i] = objective_fun1(offspring[i]) if obj_no == 1 else objective_fun2(offspring[i])
 
-            # Update best individual and best fitness
+            # TRACK BEST SOLUTION: Update best individual and best fitness
             if not best_fitness or offspring_fitness[i] < best_fitness:
                 best_individual = offspring[i]
                 best_fitness = offspring_fitness[i]
@@ -106,7 +166,6 @@ def EP(parameters):
         fitness = fitness[best_indices]
     
     return best_individual, best_fitness
-
 
 def ES(parameters):
     # Unpack parameters
@@ -134,7 +193,7 @@ def ES(parameters):
 
     # Evolution loop
     for generation in range(generations):
-        print(f"Generation {generation+1} of {generations}...", end="\r")
+        #print(f"Generation {generation+1} of {generations}...", end="\r")
         # Create offspring
         offspring = np.zeros((lambda_, dim))
         offspring_variance = np.zeros((lambda_, dim))
@@ -179,41 +238,60 @@ def ES(parameters):
         sigma = [sigma[i] for i in best_indices]
 
     return best_individual, best_fitness
-
-        
-
-
-        
+ 
 def main():
-    mu = 10  # Number of parents
-    lambda_ = 10  # Number of offspring
+    mu = 15  # Number of parents
+    lambda_ = 15  # Number of offspring
     dimention_li = [20, 50]  # Number of dimensions
-    generations = 100  # Number of generations
-    times = 30  # Number of runs
+    generations = 50  # Number of generations
+    times = 5  # Number of runs
     bounds = [-30, 30]  # Search space
 
     # generate 30 random seeds with determine incremental value
     seeds = [i+2 for i in range(times)]
 
     # Iterate over objective functions, once for each objective function
+    fitness_obj1 = [] # Store the fitness values for objective function 1
+    fitness_obj2 = [] # Store the fitness values for objective function 2
     for i in range(2):
         print()
 
         # for EP optmization algorithm     
         for run in range(times):
-            print()
+            print('--------------------------------------')
+            print(f"Run {run+1}/{times}...", end="\n")
+
 
             for dim in dimention_li:
+                EP_parameters = [generations, dim, bounds, mu, lambda_, seeds[run], i+1]  # (i) objective function number, 1 = objective_fun1, 2 = objective_fun2
+                EP_best_individual, EP_best_fitness = EP(EP_parameters)
+                print(f"EP:  Objective function {i+1}, Dimension {dim}, Run {run+1}/{times}: Best fitness: {EP_best_fitness}")
                 print()
-        
+                
         # for ES optmization algorithm 
-        for run in range(times):
-            print(f"Run {run+1}/{times}...", end="\r")
-
+        #for run in range(times):
+            #print(f"Run {run+1}/{times}...", end="\r")
+            #print(f"ES: Objective function {i+1}, Dimension {dim}, Run {run+1}/{times}...", end="\n")
             for dim in dimention_li:
                 ES_parameters = [generations, dim, bounds, mu, lambda_, seeds[run], i+1] # (i) objective function number, 1 = objective_fun1, 2 = objective_fun2
-                best_individual, best_fitness = ES(ES_parameters)
-                print(f"Objective function {i+1}, Dimension {dim}, Run {run+1}/{times}: Best fitness: {best_fitness}")
+                ES_best_individual, ES_best_fitness = ES(ES_parameters)
+                print(f"ES:  Objective function {i+1}, Dimension {dim}, Run {run+1}/{times}: Best fitness: {ES_best_fitness}")
+                print()
+            
+            # Store be results in a list
+            if i == 0:
+                fitness_obj1.append([round(EP_best_fitness), round(ES_best_fitness)])
+            else:
+                fitness_obj2.append([round(EP_best_fitness,5), round(ES_best_fitness,5)])
+    
+    # Print the summary
+    EP_data_table = print_summary(times, [item[0] for item in fitness_obj1], [item[0] for item in fitness_obj2])
+    ES_data_table = print_summary(times, [item[1] for item in fitness_obj1], [item[1] for item in fitness_obj2])
+    print("\nEP Results:")
+    print(EP_data_table)
+    print("\nES Results:")
+    print(ES_data_table)
+
                 
 
 
