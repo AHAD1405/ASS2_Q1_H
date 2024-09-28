@@ -2,6 +2,12 @@ import random
 import numpy as np
 import pandas as pd
 
+class EP_Individual:
+    def __init__(self, dimensions, bounds):
+        self.position = np.random.uniform(bounds[0], bounds[1], dimensions)
+        self.strategy = np.random.uniform(0.1, 0.5, dimensions)  # mutation strengths
+        self.fitness = None
+
 def objective_fun1(x):
     return sum(100.0*(x[1:]-x[:-1]**2.0)**2.0 + (1-x[:-1])**2.0)
 
@@ -30,6 +36,76 @@ def tournament_selection(population, fitness, tournament_size):
     selected_fitness = [fitness[i] for i in selected_indices]
     best_index = selected_indices[np.argmin(selected_fitness)]
     return population[best_index], best_index
+
+def EP(parameters):
+    # Unpack parameters
+    generations, dim, bounds, mu, lambda_, seed, obj_no = parameters
+
+    # Set random seed
+    random.seed(seed)
+
+    # INITIALIZATION: Initialize population
+    EP_population = [EP_Individual(dim, bounds) for _ in range(mu)]
+    #variance = np.random.uniform(low=0, high=1, size=(mu, dim))
+
+    # EVALUATION: Evaluate population fitness
+    for individual in range(EP_population):
+        individual.fitness = objective_fun1(individual.position) if obj_no == 1 else objective_fun2(individual.position)
+        #fitness[i] = objective_fun1(population[i]) if obj_no == 1 else objective_fun2(population[i])
+    
+    # Create offspring through mutation
+    offspring = []
+    for parent in population:
+        # Cauchy mutation
+        child = EP_Individual(dim, bounds)
+        child.position = parent.position.copy()
+        child.strategy = parent.strategy.copy()
+        #cauchy_mutate(cauchy_child, scale_factor)
+        child.fitness = objective_fun1(child.position) if obj_no == 1 else objective_fun2(child.position)
+        offspring.append(child)
+
+        # Gaussian mutation
+        #gaussian_child = EP_Individual(dim, bounds)
+        #gaussian_child.position = parent.position.copy()
+        #gaussian_child.strategy = parent.strategy.copy()
+        #gaussian_mutate(gaussian_child)
+        #gaussian_child.fitness = fitness_function(gaussian_child.position)
+        #offspring.append(gaussian_child)
+
+    best_individual = []
+    best_fitness = []
+
+    # Evolution loop
+    for generation in range(generations):
+        # Create offspring
+        offspring = np.zeros((lambda_, dim))
+        offspring_fitness = np.zeros(lambda_)
+
+        for i in range(lambda_):
+            # Select parents
+            parent, _ = tournament_selection(population, fitness, 2)
+
+            # Mutation
+            offspring[i] = parent + np.random.normal(0, 1, dim)
+
+            # Evaluate offspring
+            offspring_fitness[i] = objective_fun1(offspring[i]) if obj_no == 1 else objective_fun2(offspring[i])
+
+            # Update best individual and best fitness
+            if not best_fitness or offspring_fitness[i] < best_fitness:
+                best_individual = offspring[i]
+                best_fitness = offspring_fitness[i]
+
+        # Combine population and offspring
+        population = np.vstack((population, offspring))
+        fitness = np.concatenate((fitness, offspring_fitness))
+
+        # Select mu best individuals
+        best_indices = np.argsort(fitness)[:mu]
+        population = population[best_indices]
+        fitness = fitness[best_indices]
+    
+    return best_individual, best_fitness
 
 
 def ES(parameters):
