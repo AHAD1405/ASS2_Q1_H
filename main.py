@@ -120,19 +120,20 @@ def EP(parameters):
             child = cauchy_mutate(child, scale_factor)
             child.fitness = objective_fun1(child.position) if obj_no == 1 else objective_fun2(child.position)
             offspring.append(child)
-        
-            # TRACK BEST SOLUTION: Update best individual and best fitness
-            if not best_fitness or child.fitness < best_fitness:
-                best_individual = child.position
-                best_fitness = child.fitness
 
         # Combine population and offspring, and evaluate fitness
         EP_population += offspring
         for idx in range(len(EP_population)):
             EP_population[idx].fitness = objective_fun1(EP_population[idx].position) if obj_no == 1 else objective_fun2(EP_population[idx].position)
-
+        
         # Select mu best individuals
         EP_population = sorted(EP_population, key=lambda x: x.fitness)[:mu]
+    
+        # TRACK BEST SOLUTION: Update best individual and best fitness
+        current_best = EP_population[0]
+        if not best_fitness or current_best.fitness < best_fitness:
+            best_individual = child.position
+            best_fitness = child.fitness
 
     return best_individual, best_fitness
 
